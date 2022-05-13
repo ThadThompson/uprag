@@ -61,12 +61,59 @@ set_map("basement")
 
 
 
-dialog for end scene
+# dialog for end scene
+```
+haiku: Huh? who are you? and.. where am I..?
 
-haiku; Huh? who are you? and.. where am I..?
 jeffery: uhh... werent you the monster?
+
 haiku: Monster? Im 10!
+
 jeffery: what do you mean??
+
 haiku: wait...
 
+Jeffery: what?
+
+haiku: I think i remember now.... i think that doll...
+
+jeffery: oh, you mean the doll with the red dress?
+
+haiku: yes! Asuka.. that betrayed me.
+
+jeffery: How?
+
+Hakiu:When i lost my parents, the doll had just... appeared by me, i dont know how
+or why, but she looked so pretty, so i thought i could trust her
+
+jeffery: oh no
+
+hakiu: So... i trusted her and i lost my memory- i think she..
+
+jefery: Gave you a taco bell potion?
+
+haiku: No... made me a monster?
+
+jeffery: So no taco bell?
+
+Haiku: No, no taco bell.
+
+jeffery: oh... well where are you gonna go now?
+
+haiku: i dont know...
+
+jeffery: So.. do you need somehwere to live?
+
+haiku; i suppose, i cant live here with that horrible doll..
+
+jeffery: I guess you can come live with me?
+
+haiku: I- really?
+
+jeffery: Yeah, i guess sure
+
+
+Haiku and jeffery lived as a happy family and moved away from the neighborhood,
+```
+**the end**
 

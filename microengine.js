@@ -476,7 +476,7 @@ this.MicroVM = (function() {
     if (value == null) {
       return value;
     }
-    if (typeof value === "function" || value instanceof Program.Function || ((typeof Routine !== "undefined" && Routine !== null) && value instanceof Routine)) {
+    if (typeof value === "function" || ((typeof Program !== "undefined" && Program !== null) && value instanceof Program.Function) || ((typeof Routine !== "undefined" && Routine !== null) && value instanceof Routine)) {
       return void 0;
     } else if (typeof value === "object") {
       if (referenced.indexOf(value) >= 0) {
@@ -517,7 +517,7 @@ this.MicroVM = (function() {
 
 })();
 
-var arrayBufferToBase64, loadWaveFileLib, saveFile, writeProjectFile;
+var arrayBufferToBase64, loadLameJSLib, loadWaveFileLib, saveFile, writeProjectFile;
 
 this.Runtime = (function() {
   function Runtime(url1, sources, resources, listener) {
@@ -623,15 +623,17 @@ this.Runtime = (function() {
       for (k = 0, len2 = ref1.length; k < len2; k++) {
         m = ref1[k];
         name = m.file.split(".")[0].replace(/-/g, "/");
-        this.maps[name] = new MicroMap(this.url + ("maps/" + m.file + "?v=" + m.version), 0, 0, 0, this.sprites);
-        this.maps[name].name = name;
-        this.maps[name].loaded = (function(_this) {
+        this.maps[name] = LoadMap(this.url + ("maps/" + m.file + "?v=" + m.version), (function(_this) {
           return function() {
             return _this.checkStartReady();
           };
-        })(this);
+        })(this));
+        this.maps[name].name = name;
       }
     } else if (this.resources.maps != null) {
+      if (window.player == null) {
+        window.player = this.listener;
+      }
       ref2 = this.resources.maps;
       for (key in ref2) {
         value = ref2[key];
@@ -714,7 +716,8 @@ this.Runtime = (function() {
       fonts: window.fonts,
       Sound: Sound.createSoundClass(this.audio),
       Image: msImage,
-      Sprite: Sprite
+      Sprite: Sprite,
+      Map: MicroMap
     };
     if (window.graphics === "M3D") {
       global.M3D = M3D;
@@ -753,6 +756,9 @@ this.Runtime = (function() {
       };
     })(this);
     this.vm.context.global.system.file = System.file;
+    if (window.ms_in_editor) {
+      this.vm.context.global.system.project = new ProjectInterface(this)["interface"];
+    }
     System.runtime = this;
     ref1 = this.sources;
     for (file in ref1) {
@@ -908,11 +914,11 @@ this.Runtime = (function() {
     if (data != null) {
       m = this.maps[name];
       if (m != null) {
-        m.load(data, this.sprites);
+        UpdateMap(m, data);
         return m.needs_update = true;
       } else {
-        m = new MicroMap(1, 1, 1, 1, this.sprites);
-        m.load(data, this.sprites);
+        m = new MicroMap(1, 1, 1, 1);
+        UpdateMap(m, data);
         this.maps[name] = m;
         return this.maps[name].name = name;
       }
@@ -922,7 +928,7 @@ this.Runtime = (function() {
       if (m != null) {
         return m.loadFile(url);
       } else {
-        this.maps[name] = new MicroMap(url, 0, 0, 0, this.sprites);
+        this.maps[name] = LoadMap(url);
         return this.maps[name].name = name;
       }
     }
@@ -1203,6 +1209,9 @@ this.Runtime = (function() {
     if (this.vm.context.global.Sprite != null) {
       this.exclusion_list.push(this.vm.context.global.Sprite);
     }
+    if (this.vm.context.global.Map != null) {
+      this.exclusion_list.push(this.vm.context.global.Map);
+    }
     if (this.vm.context.global.random != null) {
       this.exclusion_list.push(this.vm.context.global.random);
     }
@@ -1391,6 +1400,20 @@ loadWaveFileLib = function(callback) {
   }
 };
 
+loadLameJSLib = function(callback) {
+  var s;
+  if (typeof lamejs !== "undefined" && lamejs !== null) {
+    return callback();
+  } else {
+    s = document.createElement("script");
+    s.src = location.origin + "/lib/lamejs/lame.min.js";
+    document.head.appendChild(s);
+    return s.onload = function() {
+      return callback();
+    };
+  }
+};
+
 writeProjectFile = function(name, data, thumb) {
   return window.player.postMessage({
     name: "write_project_file",
@@ -1412,51 +1435,6 @@ arrayBufferToBase64 = function(buffer) {
 };
 
 this.System = {
-  project: {
-    writeFile: function(obj, name, thumbnail, format, options) {
-      if (obj instanceof MicroSound) {
-        return loadWaveFileLib(function() {
-          var buffer, ch, ch1, ch2, encoded, i, j, k, ref, ref1, wav;
-          wav = new wavefile.WaveFile;
-          ch1 = [];
-          for (i = j = 0, ref = obj.length - 1; j <= ref; i = j += 1) {
-            ch1[i] = Math.round(Math.min(1, Math.max(-1, obj.read(0, i))) * 32767);
-          }
-          if (obj.channels === 2) {
-            ch2 = [];
-            for (i = k = 0, ref1 = obj.length - 1; k <= ref1; i = k += 1) {
-              ch2[i] = Math.round(Math.min(1, Math.max(-1, obj.read(1, i))) * 32767);
-            }
-            ch = [ch1, ch2];
-          } else {
-            ch = [ch1];
-          }
-          wav.fromScratch(ch.length, obj.sampleRate, '16', ch);
-          buffer = wav.toBuffer();
-          encoded = arrayBufferToBase64(buffer);
-          if (typeof name !== "string") {
-            name = "sounds/sound";
-          }
-          if (!name.startsWith("sounds/")) {
-            name = "sounds/" + name;
-          }
-          if (thumbnail instanceof msImage) {
-            return writeProjectFile(name, encoded, thumbnail.canvas.toDataURL().split(",")[1]);
-          } else {
-            return writeProjectFile(name, encoded);
-          }
-        });
-      } else if (obj instanceof msImage) {
-        if (typeof name !== "string") {
-          name = "sprites/sprite";
-        }
-        if (!name.startsWith("sprites/")) {
-          name = "sprites/" + name;
-        }
-        return writeProjectFile(name, obj.canvas.toDataURL().split(",")[1]);
-      }
-    }
-  },
   file: {
     save: function(obj, name, format, options) {
       var a, c;
@@ -1518,10 +1496,482 @@ this.System = {
           name += ".json";
         }
         return saveFile(obj, name, "text/json");
+      } else if (typeof obj === "string") {
+        if (typeof name !== "string") {
+          name = "text";
+        }
+        if (!name.endsWith(".txt")) {
+          name += ".txt";
+        }
+        return saveFile(obj, name, "text/plain");
       }
     }
   }
 };
+
+this.ProjectInterface = (function() {
+  function ProjectInterface(runtime) {
+    this.runtime = runtime;
+    this["interface"] = {
+      listFiles: (function(_this) {
+        return function(path, callback) {
+          return _this.listFiles(path, callback);
+        };
+      })(this),
+      readFile: (function(_this) {
+        return function(path, callback) {
+          return _this.readFile(path, callback);
+        };
+      })(this),
+      writeFile: (function(_this) {
+        return function(path, obj, options, callback) {
+          return _this.writeFile(path, obj, options, callback);
+        };
+      })(this),
+      deleteFile: (function(_this) {
+        return function(path, callback) {
+          return _this.deleteFile(path, callback);
+        };
+      })(this)
+    };
+  }
+
+  ProjectInterface.prototype.callback = function(callback, data, res, error) {
+    if (error != null) {
+      res.error = error;
+      res.ready = 1;
+      if (typeof callback === "function") {
+        return callback(0, error);
+      }
+    } else {
+      res.data = data;
+      res.ready = 1;
+      if (typeof callback === "function") {
+        return callback(data);
+      }
+    }
+  };
+
+  ProjectInterface.prototype.writeFile = function(path, obj, options, callback) {
+    var kind;
+    kind = path.split("/")[0];
+    switch (kind) {
+      case "source":
+        return this.writeSourceFile(obj, path, options, callback);
+      case "sprites":
+        return this.writeSpriteFile(obj, path, options, callback);
+      case "maps":
+        return this.writeMapFile(obj, path, options, callback);
+      case "sounds":
+        return this.writeSoundFile(obj, path, options, callback);
+      case "music":
+        return this.writeMusicFile(obj, path, options, callback);
+      case "assets":
+        return this.writeAssetFile(obj, path, options, callback);
+      default:
+        return callback(0, "Root folder " + kind + " does not exist");
+    }
+  };
+
+  ProjectInterface.prototype.writeSourceFile = function(obj, path, options, callback) {
+    var msg, res;
+    res = {
+      ready: 0
+    };
+    if (typeof obj !== "string") {
+      this.callback(callback, 0, res, "Incorrect object type, expected string");
+    } else {
+      msg = {
+        name: "write_project_file",
+        path: path,
+        content: obj
+      };
+      this.runtime.listener.postRequest(msg, (function(_this) {
+        return function(result) {
+          return _this.callback(callback, result.content, res, result.error);
+        };
+      })(this));
+    }
+    return res;
+  };
+
+  ProjectInterface.prototype.writeSpriteFile = function(obj, path, options, callback) {
+    var canvas, context, fps, frames, i, j, msg, ref, res;
+    res = {
+      ready: 0
+    };
+    if (obj instanceof msImage) {
+      msg = {
+        name: "write_project_file",
+        path: path,
+        content: obj.canvas.toDataURL().split(",")[1]
+      };
+      this.runtime.listener.postRequest(msg, (function(_this) {
+        return function(result) {
+          return _this.callback(callback, result.content, res, result.error);
+        };
+      })(this));
+    } else if (obj instanceof Sprite) {
+      fps = obj.fps;
+      if (obj.frames.length === 1) {
+        canvas = obj.frames[0].canvas;
+        frames = 1;
+      } else {
+        canvas = document.createElement("canvas");
+        canvas.width = obj.width;
+        canvas.height = obj.height * obj.frames.length;
+        context = canvas.getContext("2d");
+        for (i = j = 0, ref = obj.frames.length - 1; 0 <= ref ? j <= ref : j >= ref; i = 0 <= ref ? ++j : --j) {
+          context.drawImage(obj.frames[i].canvas, 0, i * obj.height);
+        }
+        frames = obj.frames.length;
+      }
+      msg = {
+        name: "write_project_file",
+        path: path,
+        content: canvas.toDataURL().split(",")[1],
+        fps: fps,
+        frames: frames
+      };
+      this.runtime.listener.postRequest(msg, (function(_this) {
+        return function(result) {
+          return _this.callback(callback, result.content, res, result.error);
+        };
+      })(this));
+    } else {
+      this.callback(callback, 0, res, "Incorrect object type, expected Image or Sprite");
+    }
+    return res;
+  };
+
+  ProjectInterface.prototype.writeMapFile = function(obj, path, options, callback) {
+    var msg, res;
+    res = {
+      ready: 0
+    };
+    if (obj instanceof MicroMap) {
+      msg = {
+        name: "write_project_file",
+        path: path,
+        content: SaveMap(obj)
+      };
+      this.runtime.listener.postRequest(msg, (function(_this) {
+        return function(result) {
+          return _this.callback(callback, result.content, res, result.error);
+        };
+      })(this));
+    } else {
+      this.callback(callback, 0, res, "Incorrect object type, expected Map");
+    }
+    return res;
+  };
+
+  ProjectInterface.prototype.writeSoundFile = function(obj, path, options, callback) {
+    var res;
+    res = {
+      ready: 0
+    };
+    if (obj instanceof MicroSound) {
+      loadWaveFileLib((function(_this) {
+        return function() {
+          var buffer, ch, ch1, ch2, encoded, i, j, k, msg, ref, ref1, wav;
+          wav = new wavefile.WaveFile;
+          ch1 = [];
+          for (i = j = 0, ref = obj.length - 1; j <= ref; i = j += 1) {
+            ch1[i] = Math.round(Math.min(1, Math.max(-1, obj.read(0, i))) * 32767);
+          }
+          if (obj.channels === 2) {
+            ch2 = [];
+            for (i = k = 0, ref1 = obj.length - 1; k <= ref1; i = k += 1) {
+              ch2[i] = Math.round(Math.min(1, Math.max(-1, obj.read(1, i))) * 32767);
+            }
+            ch = [ch1, ch2];
+          } else {
+            ch = [ch1];
+          }
+          wav.fromScratch(ch.length, obj.sampleRate, '16', ch);
+          buffer = wav.toBuffer();
+          encoded = arrayBufferToBase64(buffer);
+          msg = {
+            name: "write_project_file",
+            path: path,
+            content: encoded
+          };
+          return _this.runtime.listener.postRequest(msg, function(result) {
+            return _this.callback(callback, result.content, res, result.error);
+          });
+        };
+      })(this));
+    } else {
+      this.callback(callback, 0, res, "Incorrect object type, expected Sound");
+    }
+    return res;
+  };
+
+  ProjectInterface.prototype.writeMusicFile = function(obj, path, options, callback) {
+    var res;
+    res = {
+      ready: 0
+    };
+    if (obj instanceof MicroSound) {
+      loadLameJSLib((function(_this) {
+        return function() {
+          var blob, fr, i, index, j, k, kbps, l, m, mp3Data, mp3buf, mp3encoder, ref, ref1, ref2, ref3, ref4, ref5, sampleBlockSize, samples, samplesR, toindex;
+          kbps = 128;
+          mp3encoder = new lamejs.Mp3Encoder(obj.channels, obj.sampleRate, kbps);
+          index = 0;
+          sampleBlockSize = 1152;
+          samples = new Int16Array(sampleBlockSize);
+          samplesR = new Int16Array(sampleBlockSize);
+          mp3Data = [];
+          while (index < obj.length) {
+            toindex = Math.min(sampleBlockSize - 1, obj.length - index - 1);
+            for (i = j = 0, ref = toindex; j <= ref; i = j += 1) {
+              samples[i] = Math.round(32767 * Math.max(-1, Math.min(1, obj.read(0, index + i))));
+            }
+            if (obj.channels === 2) {
+              for (i = k = 0, ref1 = toindex; k <= ref1; i = k += 1) {
+                samplesR[i] = Math.round(32767 * Math.max(-1, Math.min(1, obj.read(1, index + i))));
+              }
+            }
+            for (i = l = ref2 = toindex + 1, ref3 = sampleBlockSize - 1; l <= ref3; i = l += 1) {
+              samples[i] = 0;
+            }
+            if (obj.channels === 2) {
+              for (i = m = ref4 = toindex + 1, ref5 = sampleBlockSize - 1; m <= ref5; i = m += 1) {
+                samplesR[i] = 0;
+              }
+            }
+            index += sampleBlockSize;
+            if (obj.channels === 2) {
+              mp3buf = mp3encoder.encodeBuffer(samples, samplesR);
+            } else {
+              mp3buf = mp3encoder.encodeBuffer(samples);
+            }
+            if (mp3buf.length > 0) {
+              mp3Data.push(mp3buf);
+            }
+          }
+          mp3buf = mp3encoder.flush();
+          if (mp3buf.length > 0) {
+            mp3Data.push(mp3buf);
+          }
+          blob = new Blob(mp3Data, {
+            type: 'audio/mp3'
+          });
+          fr = new FileReader();
+          fr.onload = function(e) {
+            var msg;
+            msg = {
+              name: "write_project_file",
+              path: path,
+              content: fr.result.split(",")[1]
+            };
+            return _this.runtime.listener.postRequest(msg, function(result) {
+              return _this.callback(callback, result.content, res, result.error);
+            });
+          };
+          return fr.readAsDataURL(blob);
+        };
+      })(this));
+    } else {
+      this.callback(callback, 0, res, "Incorrect object type, expected Sound");
+    }
+    return res;
+  };
+
+  ProjectInterface.prototype.writeAssetFile = function(obj, path, options, callback) {
+    var ext, mime, msg, ref, ref1, res;
+    res = {
+      ready: 0
+    };
+    if (obj instanceof msImage || obj instanceof Sprite) {
+      if (obj instanceof Sprite) {
+        obj = obj.frames[0];
+      }
+      if ((ref = options.ext) === "jpg" || ref === "png") {
+        ext = options.ext;
+      } else {
+        ext = "png";
+      }
+      mime = ext === "jpg" ? "image/jpeg" : "image/png";
+      msg = {
+        name: "write_project_file",
+        path: path,
+        content: obj.canvas.toDataURL(mime),
+        ext: ext
+      };
+      this.runtime.listener.postRequest(msg, (function(_this) {
+        return function(result) {
+          return _this.callback(callback, result.content, res, result.error);
+        };
+      })(this));
+    } else if (typeof obj === "string") {
+      if ((ref1 = options.ext) === "txt" || ref1 === "csv" || ref1 === "obj") {
+        ext = options.ext;
+      } else {
+        ext = "txt";
+      }
+      msg = {
+        name: "write_project_file",
+        path: path,
+        content: obj,
+        ext: ext
+      };
+      this.runtime.listener.postRequest(msg, (function(_this) {
+        return function(result) {
+          return _this.callback(callback, result.content, res, result.error);
+        };
+      })(this));
+    } else if (typeof obj === "object") {
+      obj = this.runtime.vm.storableObject(obj);
+      msg = {
+        name: "write_project_file",
+        path: path,
+        content: obj,
+        ext: "json"
+      };
+      this.runtime.listener.postRequest(msg, (function(_this) {
+        return function(result) {
+          return _this.callback(callback, result.content, res, result.error);
+        };
+      })(this));
+    } else {
+      this.callback(callback, 0, res, "Unrecognized object type");
+    }
+    return res;
+  };
+
+  ProjectInterface.prototype.listFiles = function(path, callback) {
+    var msg, res;
+    msg = {
+      name: "list_project_files",
+      path: path
+    };
+    res = {
+      ready: 0
+    };
+    this.runtime.listener.postRequest(msg, function(result) {
+      res.ready = 1;
+      if (result.list) {
+        res.list = result.list;
+      }
+      if (result.error) {
+        res.error = result.error;
+      }
+      if (typeof callback === "function") {
+        return callback(result.list, result.error);
+      }
+    });
+    return res;
+  };
+
+  ProjectInterface.prototype.readFile = function(path, callback) {
+    var kind, msg, res;
+    msg = {
+      name: "read_project_file",
+      path: path
+    };
+    res = {
+      ready: 0
+    };
+    kind = path.split("/")[0];
+    this.runtime.listener.postRequest(msg, (function(_this) {
+      return function(result) {
+        var img, map, s;
+        res.ready = 1;
+        if (result.error) {
+          res.error = result.error;
+          if (typeof callback === "function") {
+            return callback(0, result.error);
+          }
+        } else {
+          switch (kind) {
+            case "sprites":
+              s = LoadSprite(result.content.data, {
+                fps: result.content.fps,
+                frames: result.content.frames
+              }, function() {
+                res.result = s;
+                if (typeof callback === "function") {
+                  return callback(res.result, 0);
+                }
+              });
+              break;
+            case "maps":
+              map = new MicroMap(1, 1, 1, 1);
+              UpdateMap(map, result.content);
+              res.result = map;
+              if (typeof callback === "function") {
+                callback(res.result, 0);
+              }
+              break;
+            case "sounds":
+            case "music":
+              s = new Sound(_this.runtime.audio, result.content);
+              res.result = s;
+              if (typeof callback === "function") {
+                callback(s, 0);
+              }
+              break;
+            case "assets":
+              switch (result.content.type) {
+                case "text":
+                  res.result = result.content.data;
+                  callback(res.result, 0);
+                  break;
+                case "json":
+                  res.result = result.content.data;
+                  callback(res.result, 0);
+                  break;
+                case "image":
+                  img = new Image;
+                  img.src = result.content.data;
+                  img.onload = function() {
+                    var image;
+                    image = new msImage(img);
+                    res.result = image;
+                    return callback(res.result, 0);
+                  };
+              }
+              break;
+            default:
+              res.result = result.content.toString();
+              if (typeof callback === "function") {
+                return callback(res.result, 0);
+              }
+          }
+        }
+      };
+    })(this));
+    return res;
+  };
+
+  ProjectInterface.prototype.deleteFile = function(path, callback) {
+    var msg, res;
+    msg = {
+      name: "delete_project_file",
+      path: path
+    };
+    res = {
+      ready: 0
+    };
+    this.runtime.listener.postRequest(msg, function(result) {
+      res.ready = 1;
+      res.result = result.content || 0;
+      if (result.error) {
+        res.error = result.error;
+      }
+      if (typeof callback === "function") {
+        return callback(res.result, result.error);
+      }
+    });
+    return res;
+  };
+
+  return ProjectInterface;
+
+})();
 
 this.TimeMachine = (function() {
   function TimeMachine(runtime) {
@@ -2572,6 +3022,9 @@ this.Screen = (function() {
     if (canvas == null) {
       return;
     }
+    if (w == null) {
+      w = canvas.width;
+    }
     if (!h) {
       h = w / canvas.width * canvas.height;
     }
@@ -2591,6 +3044,9 @@ this.Screen = (function() {
     if (canvas == null) {
       return;
     }
+    if (w == null) {
+      w = sw;
+    }
     if (!h) {
       h = w / sw * sh;
     }
@@ -2608,7 +3064,7 @@ this.Screen = (function() {
     if (typeof map === "string") {
       map = this.runtime.maps[map];
     }
-    if ((map == null) || !map.ready || (map.canvas == null)) {
+    if ((map == null) || !map.ready) {
       return;
     }
     this.context.globalAlpha = this.alpha;
@@ -2869,7 +3325,6 @@ this.Screen = (function() {
   };
 
   Screen.prototype.mouseWheel = function(e) {
-    e.preventDefault();
     if (e.wheelDelta < 0 || e.detail > 0) {
       return this.wheel = -1;
     } else {
@@ -4102,6 +4557,9 @@ this.msImage = (function() {
     if (canvas == null) {
       return;
     }
+    if (w == null) {
+      w = canvas.width;
+    }
     if (!h) {
       h = w / canvas.width * canvas.height;
     }
@@ -4125,6 +4583,9 @@ this.msImage = (function() {
     canvas = this.getSpriteFrame(sprite);
     if (canvas == null) {
       return;
+    }
+    if (w == null) {
+      w = canvas.width;
     }
     if (!h) {
       h = w / sw * sh;
@@ -4173,42 +4634,15 @@ for (j = 0, len1 = ref.length; j < len1; j++) {
 }
 
 this.MicroMap = (function() {
-  function MicroMap(width, height, block_width, block_height, sprites1) {
-    var req;
+  function MicroMap(width, height, block_width, block_height) {
     this.width = width;
     this.height = height;
     this.block_width = block_width;
     this.block_height = block_height;
-    this.sprites = sprites1;
+    this.sprites = window.player.runtime.sprites;
     this.map = [];
-    if ((this.width != null) && typeof this.width === "string") {
-      this.ready = false;
-      req = new XMLHttpRequest();
-      req.onreadystatechange = (function(_this) {
-        return function(event) {
-          if (req.readyState === XMLHttpRequest.DONE) {
-            _this.ready = true;
-            if (req.status === 200) {
-              _this.load(req.responseText, _this.sprites);
-              _this.update();
-            }
-            if (_this.loaded != null) {
-              return _this.loaded();
-            }
-          }
-        };
-      })(this);
-      req.open("GET", this.width);
-      req.send();
-      this.width = 10;
-      this.height = 10;
-      this.block_width = 10;
-      this.block_height = 10;
-    } else {
-      this.ready = true;
-    }
+    this.ready = true;
     this.clear();
-    this.update();
   }
 
   MicroMap.prototype.clear = function() {
@@ -4328,57 +4762,6 @@ this.MicroMap = (function() {
     }
   };
 
-  MicroMap.prototype.resize = function(w, h, block_width, block_height) {
-    var i, j, k, l, map, ref1, ref2;
-    this.block_width = block_width != null ? block_width : this.block_width;
-    this.block_height = block_height != null ? block_height : this.block_height;
-    map = [];
-    for (j = k = 0, ref1 = h - 1; k <= ref1; j = k += 1) {
-      for (i = l = 0, ref2 = w - 1; l <= ref2; i = l += 1) {
-        if (j < this.height && i < this.width) {
-          map[i + j * w] = this.map[i + j * this.width];
-        } else {
-          map[i + j * w] = null;
-        }
-      }
-    }
-    this.map = map;
-    this.width = w;
-    return this.height = h;
-  };
-
-  MicroMap.prototype.save = function() {
-    var data, i, index, j, k, l, list, m, map, n, ref1, ref2, ref3, ref4, s, table;
-    index = 1;
-    list = [0];
-    table = {};
-    for (j = k = 0, ref1 = this.height - 1; k <= ref1; j = k += 1) {
-      for (i = l = 0, ref2 = this.width - 1; l <= ref2; i = l += 1) {
-        s = this.map[i + j * this.width];
-        if ((s != null) && s.length > 0 && (table[s] == null)) {
-          list.push(s);
-          table[s] = index++;
-        }
-      }
-    }
-    map = [];
-    for (j = m = 0, ref3 = this.height - 1; m <= ref3; j = m += 1) {
-      for (i = n = 0, ref4 = this.width - 1; n <= ref4; i = n += 1) {
-        s = this.map[i + j * this.width];
-        map[i + j * this.width] = (s != null) && s.length > 0 ? table[s] : 0;
-      }
-    }
-    data = {
-      width: this.width,
-      height: this.height,
-      block_width: this.block_width,
-      block_height: this.block_height,
-      sprites: list,
-      data: map
-    };
-    return JSON.stringify(data);
-  };
-
   MicroMap.prototype.loadFile = function(url) {
     var req;
     req = new XMLHttpRequest();
@@ -4415,21 +4798,6 @@ this.MicroMap = (function() {
     }
   };
 
-  MicroMap.loadMap = function(data, sprites) {
-    var i, j, k, l, map, ref1, ref2, s;
-    data = JSON.parse(data);
-    map = new MicroMap(data.width, data.height, data.block_width, data.block_height, sprites);
-    for (j = k = 0, ref1 = data.height - 1; k <= ref1; j = k += 1) {
-      for (i = l = 0, ref2 = data.width - 1; l <= ref2; i = l += 1) {
-        s = data.data[i + j * data.width];
-        if (s > 0) {
-          map.map[i + j * data.width] = data.sprites[s];
-        }
-      }
-    }
-    return map;
-  };
-
   MicroMap.prototype.clone = function() {
     var i, j, k, l, map, ref1, ref2;
     map = new MicroMap(this.width, this.height, this.block_width, this.block_height, this.sprites);
@@ -4460,6 +4828,83 @@ this.MicroMap = (function() {
   return MicroMap;
 
 })();
+
+this.LoadMap = function(url, loaded) {
+  var map, req;
+  map = new MicroMap(1, 1, 1, 1);
+  map.ready = false;
+  req = new XMLHttpRequest();
+  req.onreadystatechange = (function(_this) {
+    return function(event) {
+      if (req.readyState === XMLHttpRequest.DONE) {
+        map.ready = true;
+        if (req.status === 200) {
+          UpdateMap(map, req.responseText);
+        }
+        map.needs_update = true;
+        if (loaded != null) {
+          return loaded();
+        }
+      }
+    };
+  })(this);
+  req.open("GET", url);
+  req.send();
+  return map;
+};
+
+this.UpdateMap = function(map, data) {
+  var i, j, k, l, ref1, ref2, s;
+  data = JSON.parse(data);
+  map.width = data.width;
+  map.height = data.height;
+  map.block_width = data.block_width;
+  map.block_height = data.block_height;
+  for (j = k = 0, ref1 = data.height - 1; k <= ref1; j = k += 1) {
+    for (i = l = 0, ref2 = data.width - 1; l <= ref2; i = l += 1) {
+      s = data.data[i + j * data.width];
+      if (s > 0) {
+        map.map[i + j * data.width] = data.sprites[s];
+      } else {
+        map.map[i + j * data.width] = null;
+      }
+    }
+  }
+  map.needs_update = true;
+  return map;
+};
+
+this.SaveMap = function(map) {
+  var data, i, index, j, k, l, list, m, n, o, ref1, ref2, ref3, ref4, s, table;
+  index = 1;
+  list = [0];
+  table = {};
+  for (j = k = 0, ref1 = map.height - 1; k <= ref1; j = k += 1) {
+    for (i = l = 0, ref2 = map.width - 1; l <= ref2; i = l += 1) {
+      s = map.map[i + j * map.width];
+      if ((s != null) && s.length > 0 && (table[s] == null)) {
+        list.push(s);
+        table[s] = index++;
+      }
+    }
+  }
+  m = [];
+  for (j = n = 0, ref3 = map.height - 1; n <= ref3; j = n += 1) {
+    for (i = o = 0, ref4 = map.width - 1; o <= ref4; i = o += 1) {
+      s = map.map[i + j * map.width];
+      m[i + j * map.width] = (s != null) && s.length > 0 ? table[s] : 0;
+    }
+  }
+  data = {
+    width: map.width,
+    height: map.height,
+    block_width: map.block_width,
+    block_height: map.block_height,
+    sprites: list,
+    data: m
+  };
+  return JSON.stringify(data);
+};
 
 this.AudioCore = (function() {
   function AudioCore(runtime) {
@@ -4944,7 +5389,9 @@ this.Sound = (function() {
     this.url = url;
     if (this.url instanceof AudioBuffer) {
       this.buffer = this.url;
+      this.ready = 1;
     } else {
+      this.ready = 0;
       request = new XMLHttpRequest();
       request.open('GET', this.url, true);
       request.responseType = 'arraybuffer';
@@ -4952,6 +5399,7 @@ this.Sound = (function() {
         return function() {
           return _this.audio.context.decodeAudioData(request.response, function(buffer1) {
             _this.buffer = buffer1;
+            return _this.ready = 1;
           });
         };
       })(this);
@@ -5178,6 +5626,8 @@ this.Player = (function() {
     this.source_count = 0;
     this.sources = {};
     this.resources = resources;
+    this.request_id = 1;
+    this.pending_requests = {};
     if (resources.sources != null) {
       ref = resources.sources;
       for (i = 0, len = ref.length; i < len; i++) {
@@ -5365,6 +5815,13 @@ this.Player = (function() {
           return this.runtime.watch(data.list);
         case "stop_watching":
           return this.runtime.stopWatching();
+        default:
+          if (data.request_id != null) {
+            if (this.pending_requests[data.request_id] != null) {
+              this.pending_requests[data.request_id](data);
+              return delete this.pending_requests[data.request_id];
+            }
+          }
       }
     } catch (error1) {
       err = error1;
@@ -5403,6 +5860,12 @@ this.Player = (function() {
         return console.error(err);
       }
     }
+  };
+
+  Player.prototype.postRequest = function(data, callback) {
+    data.request_id = this.request_id;
+    this.pending_requests[this.request_id++] = callback;
+    return this.postMessage(data);
   };
 
   return Player;
